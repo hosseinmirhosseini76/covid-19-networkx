@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Apr 11 17:34:35 2020
+
+@author: paul
+"""
+
+import networkx as nx
+import numpy as np
+import matplotlib.pyplot as plt
+from random import randrange
+from pylab import savefig
+
+
+m,n=100,100    
+#N=m*n       # Lattice size
+M=40000      # Number of random walkers
+L=20       # Lifetime params
+max_iter=10000      # in like discrete time-steps
+steps=100         # total number of times 
+    
+sick, dead, iterate=0,0,0     # counters
+neighbors=[]      # Store the neighbors here 
+
+Lat=nx.grid_2d_graph(m,n)       # A 2-D Lattice
+nodes=[]
+walkers={}
+for i in Lat.nodes():
+    nodes.append(i)
+    walkers[i]=[]
+    
+
+nx.set_node_attributes(Lat,0,'infected')        # Sets the attribute infected, the number of infected peeps at a node at any temporal point 
+nx.set_node_attributes(Lat,walkers,'walkers')         # Sets the attribute walkers, the walkers at a node
+
+x,y=np.zeros(M), np.zeros(M)    # walker x,y coord
+infect=np.zeros(M)              # walker health status
+lifespan=L*np.ones(M)            # Time left to live
+ts_sick=np.zeros(max_iter)      # time series of sick walkers
+#ts_dead=np.zeros(max_iter)
+ts_ctr=np.zeros(max_iter)       # counter to record each iter for averaging
+iter_high=0                 # The max count of iter (it doesn't go on till max_iter)
+
+def place():            # place walkers on lattice
+    for j in range(M):             
+        
+        ( x[j] , y[j] )= nodes[randrange(len(nodes))]
+        Lat.nodes[ (x[j],y[j]) ]['walkers'].append(j)       # add this walker at node
+    
+    
+    
+
+def first_case():       # infect a random walker
+    
+    while(True):
+        cx,cy= nodes[randrange(len(nodes))]     
+        temp=Lat.nodes[(cx,cy)]['walkers']          # may be empty if nodes>walkers....! So empty range Error
+        if (len(temp)!=0):
+            break
+    
+    first_case=temp[randrange(len(temp))]   
+    infect[first_case]=1
+    Lat.nodes[(cx,cy)]['infected']+=1
+    global sick
+    sick=1
+
+
+
+def walk(j):         # walk the walker to a new location
+    for i in Lat.neighbors( (x[j],y[j]) ):
+                neighbors.append(i)
+              
+    # remove a walker from node!
+    Lat.nodes[(x[j],y[j])]['walkers'].remove(j)               
+    ( x[j] , y[j] )=neighbors[randrange(len(neighbors))]
+    # add him to the new node!
+    Lat.nodes[(x[j],y[j])]['walkers'].append(j)
+
+
+def kill(j):        # Kill a walker
+    infect[j]=2
+    global sick,dead
+    sick-=1
+    dead+=1
+                
+    Lat.nodes[(x[j],y[j])]['walkers'].remove(j)
+    # 'infected' attribute is not updated as it gives the count of infected people at a hotspot. Going dead doesn't change that
+    # Maybe a new attribute for people dying in a location would be great!
+             
+def actions(j):
+    
+    if infect[j]<2:     #still alive
+            walk(j)
+            
+    if infect[j]==1:    #sick
+        lifespan[j]-=1
+        Lat.nodes[(x[j],y[j])]['infected']+=1           # so this guy is infected!
+            
+        if lifespan[j]<=0:  #go die!
+            kill(j)
+                
+        for k in Lat.nodes[(x[j],y[j])]['walkers'] :        ##!
+            if infect[k]==0 and k!=j: # healthy guy
+                infect[k]=1     # infect him!
+                
+                global sick
+                sick+=1
+                Lat.nodes[(x[j],y[j])]['infected']+=1
+      
+        
+def reset():
+    global sick,dead,iterate
+    sick,dead,iterate=0,0,0
+    
+            
+while(steps>0):        
+    place()
+    first_case()         
+
+    while(sick>0) and (iterate < max_iter):
+        for j in range(0,M):
+        
+            actions(j)
+            neighbors.clear()
+                        
+        ts_sick[iterate]+=sick
+#        ts_dead[iterate]=dead
+        ts_ctr[iterate]+=1
+        iterate+=1 
+        
+    if (iterate>iter_high) :
+        iter_high=iterate
+    reset()
+    steps-=1
+  
+# Averaging
+
+for i in range(iter_high):
+    ts_sick[i]/=ts_ctr[i]
+    
+plt.plot(range(0,iter_high+10),ts_sick[0:iter_high+10])
+#plt.plot(range(0,iterate+10),ts_dead[0:iterate+10])
+plt.ylabel('Infected')
+plt.xlabel('Discrete Time steps')
+savefig("/home/paul/Documents/COVID/Lattice_model.png",dpi=400)
+
+plt.show()
+                  
